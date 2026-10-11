@@ -26,13 +26,10 @@ def side(name, text_flow, img_w=78 * mm, max_h=None, caption=""):
 
 
 # ------------------------------------------------------------------ cover
-story.append(Spacer(1, 30 * mm))
-story.append(P("Naqsha User Guide", "title"))
-story.append(P("How to turn drone videos into a map: every screen, every button, and where your files go.", "subtitle"))
-story.append(Spacer(1, 4 * mm))
+story.append(cover_space("guide", 18 * mm))
 shot("03_project.png", "The main screen after a map has been built: the flight summary at the top, the map in the middle "
      "with its key on the left, and the Build / Maps / Videos / Activity panel on the right. Every small (i) explains the "
-     "thing next to it when you hover over it.")
+     "thing next to it when you hover over it.", max_h=98 * mm)
 story.append(P("<b>In one sentence:</b> point Naqsha at a folder of drone videos, press <b>Build the map</b>, wait, "
                "and download a stitched top-down map with coordinates, an elevation map and the flight paths. "
                "Everything in between is automatic."))
@@ -292,7 +289,8 @@ story.append(table([
     ["Big red gaps over trees", "dense canopy is hard to stitch; fly higher or with more overlap next time"],
 ], [62 * mm, WIDTH - 62 * mm], st))
 
-doc = SimpleDocTemplate(OUT, pagesize=PAGE, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=14 * mm,
+doc = SimpleDocTemplate(OUT, pagesize=PAGE, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=18 * mm,
                         bottomMargin=16 * mm, title="Naqsha User Guide", author="DenseFusion",
                         subject="How to use Naqsha")
-doc.build(story, onFirstPage=footer("Naqsha user guide"), onLaterPages=footer("Naqsha user guide"))
+_first, _later = pages("User Guide", "guide")
+doc.build(story, onFirstPage=_first, onLaterPages=_later)

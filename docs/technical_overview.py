@@ -23,8 +23,8 @@ def pipeline():
         d.add(Rect(x, 8, w, 36, rx=4, ry=4, fillColor=PALE if i not in (0, n - 1) else ACCENT,
                    strokeColor=ACCENT, strokeWidth=0.8))
         col = INK if i not in (0, n - 1) else colors_white
-        d.add(String(x + w / 2, 29, a, fontName="Arial-Bold", fontSize=7.6, fillColor=col, textAnchor="middle"))
-        d.add(String(x + w / 2, 17, b, fontName="Arial", fontSize=6.6, fillColor=col, textAnchor="middle"))
+        d.add(String(x + w / 2, 29, a, fontName="Body-Bold", fontSize=7.6, fillColor=col, textAnchor="middle"))
+        d.add(String(x + w / 2, 17, b, fontName="Body", fontSize=6.6, fillColor=col, textAnchor="middle"))
         if i < n - 1:
             x2 = x + w
             d.add(Line(x2 + 1, 26, x2 + gap - 1.5, 26, strokeColor=ACCENT, strokeWidth=1))
@@ -36,9 +36,7 @@ from reportlab.lib import colors as _c  # noqa: E402
 colors_white = _c.white
 
 story = []
-story.append(P("Naqsha", "title"))
-story.append(P("Turning drone video into an accurate, georeferenced map on an ordinary 8 GB laptop. "
-               "Technical overview of the software, October 2026.", "subtitle"))
+story.append(cover_space("tech", 18 * mm))
 
 story.append(P("1. What the system does", "h1"))
 story.append(P("Naqsha is a local web application and command-line tool built for the OGDCL site survey footage "
@@ -98,9 +96,9 @@ def arch_diagram():
     d = Drawing(WIDTH, 128)
     def box(x, y, w, h, title, lines, fill=PALE):
         d.add(Rect(x, y, w, h, rx=4, ry=4, fillColor=fill, strokeColor=ACCENT, strokeWidth=0.8))
-        d.add(String(x + 6, y + h - 12, title, fontName="Arial-Bold", fontSize=7.8, fillColor=INK))
+        d.add(String(x + 6, y + h - 12, title, fontName="Body-Bold", fontSize=7.8, fillColor=INK))
         for i, ln in enumerate(lines):
-            d.add(String(x + 6, y + h - 23 - i * 9, ln, fontName="Arial", fontSize=6.6, fillColor=MUTED))
+            d.add(String(x + 6, y + h - 23 - i * 9, ln, fontName="Body", fontSize=6.6, fillColor=MUTED))
     def arrow(x1, y1, x2, y2, label=""):
         d.add(Line(x1, y1, x2, y2, strokeColor=ACCENT, strokeWidth=0.9))
         import math
@@ -109,7 +107,7 @@ def arch_diagram():
         p2 = (x2 - 5 * math.cos(a) - 2.5 * math.sin(a), y2 - 5 * math.sin(a) + 2.5 * math.cos(a))
         d.add(Polygon([x2, y2, *p1, *p2], fillColor=ACCENT, strokeColor=ACCENT))
         if label:
-            d.add(String((x1 + x2) / 2, (y1 + y2) / 2 + 3, label, fontName="Arial", fontSize=6.2, fillColor=MUTED,
+            d.add(String((x1 + x2) / 2, (y1 + y2) / 2 + 3, label, fontName="Body", fontSize=6.2, fillColor=MUTED,
                          textAnchor="middle"))
     W = WIDTH
     bw = (W - 40) / 4
@@ -284,7 +282,8 @@ story.append(table([
     ["Elevation layer crashed the web page", "numpy integers in the legend JSON", "converted to plain integers, regression test added"],
 ], [52 * mm, 63 * mm, WIDTH - 115 * mm], st))
 
-doc = SimpleDocTemplate(OUT, pagesize=PAGE, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=14 * mm,
+doc = SimpleDocTemplate(OUT, pagesize=PAGE, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=18 * mm,
                         bottomMargin=16 * mm, title="Naqsha Technical Overview", author="DenseFusion",
                         subject="Drone video to georeferenced map")
-doc.build(story, onFirstPage=footer("Naqsha technical overview"), onLaterPages=footer("Naqsha technical overview"))
+_first, _later = pages("Technical Overview", "tech")
+doc.build(story, onFirstPage=_first, onLaterPages=_later)

@@ -21,6 +21,8 @@ an exact record of the flight, and a tree count with its accuracy measured by ha
 [Quick start](#quick-start) · [How it works](#how-it-works) · [Tree counting](#tree-counting) ·
 [Accuracy](#what-it-does-about-accuracy) · [8 GB laptops](#how-it-fits-on-an-8-gb-laptop) · [Layout](#project-layout)
 
+**[User Guide (PDF)](docs/pdf/Naqsha-User-Guide.pdf)** · **[Technical Overview (PDF)](docs/pdf/Naqsha-Technical-Overview.pdf)**
+
 </div>
 
 <br>
@@ -236,7 +238,7 @@ backend/naqsha/
   treework.py    tree jobs, squares, model versions, experiment log
   pipeline.py    job handlers;   api.py  HTTP API;   tiles.py  COG tile server
 frontend/src/    React + MapLibre interface
-docs/            user guide and technical overview generators, README images
+docs/            user guide and technical overview (pdf/ and their generators), README images, fonts
 brand/           logo files
 ```
 
