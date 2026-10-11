@@ -50,6 +50,8 @@ story += bullets([
     "<b>Start Docker Desktop</b> first (the whale icon in the menu bar). The stitching engine runs inside it.",
     "Open <b>Terminal</b>, go to the <font name='Mono'>naqsha</font> folder and run <font name='Mono'>./run.sh</font>. "
     "Leave this window open while you work.",
+    "When you click a button that starts work, it shows a small spinning circle and cannot be clicked again until "
+    "the work has started, so there is no need to click twice.",
     "Open <b>http://127.0.0.1:8765</b> in your browser (Safari or Chrome).",
 ], st)
 story.append(Preformatted('cd ~/Desktop/Macbook/Work/Internship/DenseFusion/Projects/Stiching/naqsha\n./run.sh', st["code"]))

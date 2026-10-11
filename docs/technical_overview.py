@@ -169,7 +169,8 @@ S = [
      "ODM 3.6 converts heading to camera angles through Earth-centred axes, which rotates every camera by 90 degrees "
      "plus the longitude (163 degrees here). The first map collapsed to 346 points. Naqsha mounts a one-line corrected "
      "copy of the faulty file into the container, verifies it by running ODM's own code, and passes exact angles "
-     "through a geo file: 92,000 points on the same photos. If a future ODM fixes the bug, the probe notices."),
+     "through a geo file: 92,000 points on the same photos. If a future ODM fixes the bug, the probe notices. "
+     "The fix was submitted upstream as OpenDroneMap pull request #2078."),
     ("Fitting in 8 GB of memory.",
      "ODM needs about 4 GB for 40 images by its own guidance. Naqsha learns a memory model per quality level "
      "(peak = base + slope x photos, fitted over every run), splits the survey into compact overlapping parts that fit, "
@@ -237,8 +238,11 @@ story.append(P("Canopy height is the DSM minus a bare-ground surface from SMRF (
                "<b>Active learning</b> asks for 12 m patches where crown confidence sits at the cut-off or image and height "
                "disagree; whole patches are marked so no unlabelled tree is taught as background. A height filter decides "
                "what is reported. On two held-out patches of young trees (61 trees), F1 rose from 0.23 (pretrained, 10 cm) "
-               "to 0.49 (pretrained, 5 cm) to <b>0.62</b> (taught on 124 trees, 5 cm). Shakarparian: 4,701 woody plants "
-               "from 1 m; <b>1,777 trees at least 4 m tall</b>; hand-graded accuracy pending."))
+               "to 0.49 (pretrained, 5 cm) to <b>0.62</b> (taught on 124 trees, 5 cm). Teaching is <b>cumulative and per "
+               "site</b>: every run retrains from the site's starting point on all squares and answers marked so far, so "
+               "random squares and active learning feed one model; a new project starts from plain DeepForest unless told "
+               "to start from another site's model. Shakarparian, model v4 (213 marked trees): 3,638 woody plants from "
+               "1 m; <b>1,442 trees at least 4 m tall</b>; hand-graded accuracy pending."))
 
 story.append(P("8. Project layout and running it", "h1"))
 story.append(P("<font name='Mono'>Stiching/naqsha/</font>: <b>backend/naqsha</b> (Python package, about 5,000 lines: "
