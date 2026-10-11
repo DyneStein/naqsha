@@ -1,0 +1,22 @@
+# dependencies and builds
+node_modules/
+frontend/dist/
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+backend/lightning_logs/
+backend/tests/.tmpdata/
+
+# survey data never leaves the machine
+*.MP4
+*.mp4
+*.tif
+*.laz
+*.sqlite*
+naqsha-data/
+naqsha-output/
+
+.DS_Store
+*.log
