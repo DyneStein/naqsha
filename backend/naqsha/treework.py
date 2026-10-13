@@ -13,7 +13,7 @@ from pathlib import Path
 import rasterio
 from pyproj import Transformer
 
-from . import canopy, db, trees
+from . import canopy, db, sharp, trees
 from .config import project_dir
 from .jobs import JobContext, handler
 
@@ -38,6 +38,14 @@ def _ortho(run: dict, rdir: Path) -> Path:
     if not rel:
         raise ValueError("this map has no orthophoto")
     return rdir / rel
+
+
+def _imagery(run: dict, rdir: Path, tdir: Path) -> tuple[Path, str]:
+    """The image trees are found in: the stitched orthophoto, or the sharp map rebuilt
+    from the raw frames (sharp.py) when it exists and was chosen in the settings."""
+    if load_settings(tdir).get("imagery") == "sharp" and (tdir / "sharp.tif").exists():
+        return tdir / "sharp.tif", "sharp"
+    return _ortho(run, rdir), "map"
 
 
 def _crs(path: Path):
@@ -342,14 +350,36 @@ def finalize(rid: int) -> dict:
              "ground": meta.get("ground"),
              "candidates": {"image_boxes": len(cand["boxes"]), "treetops": len(cand["tops"])},
              "squares_test": len(test), "squares_teach": len(teach), "selected_on": selected_on,
-             "detect_seconds": meta.get("seconds"), "no_match": no_match}
+             "detect_seconds": meta.get("seconds"), "no_match": no_match, "imagery": meta.get("imagery", "map")}
     graded_ok = graded if graded and not no_match else None
-    extra["squares_estimate"] = trees.design_estimate([p for p in plots if p.get("origin") == "random"], area)
+    extra["squares_estimate"] = trees.design_estimate([p for p in plots if p.get("origin") == "random"], area,
+                                                      cells=_map_cells(run, rdir, tdir))
     summary = trees.summarise(result, area, {"score": graded_ok, "table": chosen["table"] if chosen else []} if graded_ok else None,
                               method, thr, extra)
     trees.write_outputs(tdir, _crs(_ortho(run, rdir)), result, summary)
     _log_eval(tdir, cand, test, meta, method, thr, selected_on, summary)
     return summary
+
+
+def _map_cells(run: dict, rdir: Path, tdir: Path, cell: float = 2.0):
+    """Centres of the mapped ground on a 2 m grid (cached): lets the hand-count estimate
+    weight each random square by how much of the map it stands for."""
+    import numpy as np
+    f = tdir / "map_cells.npy"
+    ortho = _ortho(run, rdir)
+    if f.exists() and f.stat().st_mtime >= ortho.stat().st_mtime:
+        return np.load(f)
+    from rasterio.enums import Resampling
+    with rasterio.open(ortho) as ds:
+        if ds.count < 4:
+            return None
+        b = ds.bounds
+        w, h = int((b.right - b.left) / cell), int((b.top - b.bottom) / cell)
+        a = ds.read(ds.count, out_shape=(h, w), resampling=Resampling.nearest) > 0
+    r, c = np.nonzero(a)
+    pts = np.stack([b.left + (c + 0.5) * cell, b.top - (r + 0.5) * cell], 1).astype(np.float64)
+    np.save(f, pts)
+    return pts
 
 
 def _log_eval(tdir: Path, cand: dict, test: list[dict], meta: dict, method: str, thr: float, selected_on, summary) -> None:
@@ -404,13 +434,13 @@ def compare(rid: int) -> dict:
 
 def load_settings(tdir: Path) -> dict:
     f = tdir / "settings.json"
-    return {"min_height_m": 0.0, **(json.loads(f.read_text()) if f.exists() else {})}
+    return {"min_height_m": 0.0, "imagery": "map", **(json.loads(f.read_text()) if f.exists() else {})}
 
 
 def save_settings(rid: int, settings: dict) -> dict:
     _, _, tdir = run_files(rid)
     cur = load_settings(tdir)
-    cur.update({k: v for k, v in settings.items() if k in ("min_height_m",)})
+    cur.update({k: v for k, v in settings.items() if k in ("min_height_m", "imagery") and v is not None})
     (tdir / "settings.json").write_text(json.dumps(cur))
     log_event(tdir, "settings", **cur)
     return cur
@@ -438,13 +468,14 @@ def status(rid: int) -> dict:
     run, rdir, tdir = run_files(rid)
     s = tdir / "summary.json"
     plots = load_plots(tdir)
-    job = db.one("SELECT id, kind, status, progress, stage FROM jobs WHERE ref_id=? AND kind IN ('trees','trees_train') "
+    job = db.one("SELECT id, kind, status, progress, stage FROM jobs WHERE ref_id=? AND kind IN ('trees','trees_train','sharp') "
                  "ORDER BY id DESC LIMIT 1", (rid,))
     cur = current_model(run["project_id"])
     return {"summary": json.loads(s.read_text()) if s.exists() else None,
             "plots": [{k: p.get(k) for k in PUBLIC} for p in plots],
             "job": job, "site_model": {k: v for k, v in cur.items() if k != "dir"} if cur else None,
             "settings": load_settings(tdir),
+            "sharp": json.loads((tdir / "sharp.json").read_text()) if (tdir / "sharp.tif").exists() and (tdir / "sharp.json").exists() else None,
             "base_model": {k: v for k, v in (base_model(run["project_id"]) or {}).items() if k != "dir"} or None,
             "other_models": [m for m in all_site_models() if m["project"] != run["project_id"]],
             "models": list_models(run["project_id"])}
@@ -456,7 +487,7 @@ def _count(rid: int, params: dict, report) -> None:
     """report(fraction, stage=None, message=None)"""
     run, rdir, tdir = run_files(rid)
     tdir.mkdir(parents=True, exist_ok=True)
-    ortho = _ortho(run, rdir)
+    ortho, imagery = _imagery(run, rdir, tdir)
     outs = (run.get("qa") or {}).get("outputs", {})
     if not outs.get("dsm"):
         raise ValueError("this map has no elevation model; build it with Standard or Maximum quality")
@@ -471,6 +502,9 @@ def _count(rid: int, params: dict, report) -> None:
     cur = None if params.get("pretrained") else current_model(run["project_id"])
     model = trees.load_model(cur["dir"] if cur else None)
     res = trees.model_res(cur["dir"] if cur else None)
+    if cur and cur.get("imagery", "map") != imagery:
+        report(0.1, "Finding trees in the map image", f"note: model {cur['version']} was taught on the "
+               f"{'sharp map' if cur.get('imagery') == 'sharp' else 'stitched map'}; teach it again on this image for its best")
     boxes = trees.detect_image(ortho, model, res=res,
                                progress=lambda f, m=None: report(0.12 + 0.78 * f, f"Finding trees in the map image ({res * 100:.0f} cm)", m))
     report(0.92, "Checking crowns against tree height")
@@ -481,8 +515,8 @@ def _count(rid: int, params: dict, report) -> None:
     (tdir / "detect.json").write_text(json.dumps({
         "model": f"DeepForest, taught on this site ({version})" if cur else "DeepForest (pretrained)",
         "model_version": version, "trained_on": cur["squares"] if cur else [], "ground": ground_src,
-        "seconds": round(time.time() - t0), "t": round(time.time())}))
-    log_event(tdir, "count", model_version=version, boxes=len(boxes), seconds=round(time.time() - t0))
+        "seconds": round(time.time() - t0), "t": round(time.time()), "imagery": imagery}))
+    log_event(tdir, "count", model_version=version, boxes=len(boxes), seconds=round(time.time() - t0), imagery=imagery)
     report(0.97, "Counting")
     finalize(rid)
 
@@ -515,15 +549,17 @@ def train_job(ctx: JobContext) -> None:
     vdir.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     base = base_model(run["project_id"])
-    info = trees.fine_tune(_ortho(run, rdir), cand, plots, vdir, init_dir=base["dir"] if base else None,
-                           res=float(base.get("res", trees.SITE_RES)) if base else trees.SITE_RES,
+    image, imagery = _imagery(run, rdir, tdir)
+    res = trees.SHARP_RES if imagery == "sharp" else trees.SITE_RES
+    info = trees.fine_tune(image, cand, plots, vdir, init_dir=base["dir"] if base else None,
+                           res=float(base.get("res", res)) if base else res,
                            progress=lambda f, m=None: ctx.progress(0.6 * f, "Teaching the model your trees", m))
     kinds = sorted({"active learning" if p.get("origin") == "active" else "teaching squares" for p in plots})
     label = " + ".join(kinds) if use == "all" else {"random": "random squares", "active": "active learning"}[use]
     if base:
         label += f", started from {base['project_name']} {base['source_version']}"
     secs = sum(sum(x.get("seconds", 0) for x in p.get("sessions", [])) for p in plots)
-    info.update({"approach": label, "map": rid, "base": base["version"] if base else None, "seconds": round(time.time() - t0), "label_seconds": secs,
+    info.update({"approach": label, "map": rid, "imagery": imagery, "base": base["version"] if base else None, "seconds": round(time.time() - t0), "label_seconds": secs,
                  "trees_labelled": sum(len(p["marks_m"]) for p in plots)})
     (vdir / "model.json").write_text(json.dumps(info))
     set_current_model(run["project_id"], vdir.name)
@@ -535,4 +571,25 @@ def train_job(ctx: JobContext) -> None:
     log_event(tdir, "teach", model_version=vdir.name, squares=[p["id"] for p in plots], crowns=info["crowns"],
               epochs=info["epochs"], seconds=info["seconds"], approach=info["approach"])
     _count(rid, {}, lambda f, s=None, m=None: ctx.progress(0.6 + 0.4 * f, s, m))   # count again with the taught model
+    ctx.progress(1.0, "Done", force=True)
+
+
+@handler("sharp")
+def sharp_job(ctx: JobContext) -> None:
+    """Rebuild the map image from the raw frames (sharp.py). Needs tree heights first:
+    the bare ground to project onto and the canopy height to know where tall crowns stand."""
+    rid = ctx.job["ref_id"]
+    run, rdir, tdir = run_files(rid)
+    outs = (run.get("qa") or {}).get("outputs", {})
+    if not outs.get("dsm"):
+        raise ValueError("this map has no elevation model; build it with Standard or Maximum quality")
+    tdir.mkdir(parents=True, exist_ok=True)
+    if not (tdir / "chm.tif").exists():
+        ctx.progress(0.01, "Measuring tree heights", "separating bare ground from trees and buildings")
+        dtm = rdir / outs["dtm"] if outs.get("dtm") else None
+        canopy.canopy_height(rdir / outs["dsm"], tdir, dtm=dtm)
+    ground = rdir / outs["dtm"] if outs.get("dtm") else tdir / "ground.tif"
+    info = sharp.build(rdir, _ortho(run, rdir), ground, tdir / "chm.tif", tdir / "sharp.tif",
+                       progress=lambda f, m=None: ctx.progress(0.02 + 0.97 * f, "Rebuilding the map from the raw frames", m))
+    log_event(tdir, "sharp_map", **info)
     ctx.progress(1.0, "Done", force=True)

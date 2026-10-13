@@ -161,6 +161,8 @@ export default function App() {
             if (newest && newest.id !== shownRun?.id) {
               api.run(newest.id).then(setShownRun)
               api.selection(newest.selection_id).then(setShownSel)
+            } else if (shownRun) {
+              api.run(shownRun.id).then(setShownRun)       // new layers (the sharp map) appear without a reload
             }
           }
         }
@@ -332,9 +334,9 @@ export default function App() {
                       {!runs.length && <p className="text-sm text-slate-400">No maps yet. Build one from the Build tab.</p>}
                     </div>
                   )}
-                  {tab === 'trees' && <TreesPanel run={shownRun} status={treeStatus} onChanged={() => { loadTrees(shownRun?.id); refresh() }}
+                  {tab === 'trees' && <TreesPanel run={shownRun} status={treeStatus} onChanged={() => { loadTrees(shownRun?.id); refresh(); if (shownRun) api.run(shownRun.id).then(setShownRun) }}
                     onMinHeight={(h) => { if (!shownRun) return; setTreeStatus((st) => st && { ...st, settings: { ...st.settings, min_height_m: h } }); api.saveTreeSettings(shownRun.id, { min_height_m: h }).then(setTreeStatus) }}
-                    busy={activeJobs.some((j) => j.kind === 'trees' || j.kind === 'trees_train')}
+                    busy={activeJobs.some((j) => j.kind === 'trees' || j.kind === 'trees_train' || j.kind === 'sharp')}
                     onPlace={(size, role) => { setPlotSize(size); setPlaceRole(role); setEdit(null); setTreeMode('place') }} onEdit={(p) => { setQueue(null); editPlot(p) }}
                     onAnswer={(qs) => { if (!qs.length) return; setQueue({ ids: qs.map((q) => q.id), pos: 0 }); editPlot(qs[0]) }} />}
                   {tab === 'videos' && <VideosTable project={project} />}

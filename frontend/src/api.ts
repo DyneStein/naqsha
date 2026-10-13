@@ -134,7 +134,8 @@ export interface TreeStatus {
   job: { id: number; kind: string; status: string; progress: number; stage: string } | null
   site_model: Json | null
   models: Json[]
-  settings?: { min_height_m: number }
+  settings?: { min_height_m: number; imagery?: 'map' | 'sharp' }
+  sharp?: Json | null
   base_model?: Json | null
   other_models?: Json[]
 }
@@ -168,7 +169,8 @@ export const api = {
   teachTrees: (rid: number, use: 'all' | 'random' | 'active' = 'all') => req<{ job: number }>('POST', `/api/runs/${rid}/trees/train`, { use }),
   askTrees: (rid: number, n: number) => req<TreeStatus>('POST', `/api/runs/${rid}/trees/ask`, { n, size_m: 12 }),
   setTreeStart: (rid: number, project: number | null, version: string | null) => req<TreeStatus>('POST', `/api/runs/${rid}/trees/start`, { project, version }),
-  saveTreeSettings: (rid: number, body: { min_height_m: number }) => req<TreeStatus>('POST', `/api/runs/${rid}/trees/settings`, body),
+  makeSharp: (rid: number) => req<{ job: number }>('POST', `/api/runs/${rid}/trees/sharp`),
+  saveTreeSettings: (rid: number, body: { min_height_m?: number; imagery?: 'map' | 'sharp' }) => req<TreeStatus>('POST', `/api/runs/${rid}/trees/settings`, body),
   compareTrees: (rid: number) => req<Json>('GET', `/api/runs/${rid}/trees/compare`),
   savePlot: (rid: number, plot: Json) => req<TreeStatus & { plot: TreePlot }>('POST', `/api/runs/${rid}/trees/plots`, plot),
   randomPlots: (rid: number, body: { n: number; size_m: number; role: 'test' | 'teach' }) =>

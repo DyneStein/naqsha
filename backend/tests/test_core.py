@@ -425,3 +425,34 @@ def test_hand_count_estimate_and_crown_aware_matching():
     sq = [{"id": 1, "poly_m": [[-10, -10], [10, -10], [10, 10], [-10, 10]], "marks_m": [[3, 0]]}]
     assert score_plots(big, sq)["tp"] == 1
     assert score_plots([{"x": 0, "y": 0, "crown": 2.0}], sq)["tp"] == 0
+
+
+def test_hand_count_estimate_weights_squares_by_the_map_they_stand_for():
+    from naqsha.trees import design_estimate
+    sq = lambda x, n: {"size_m": 10, "poly_m": [[x, 0], [x + 10, 0], [x + 10, 10], [x, 10]], "marks_m": [[0, 0]] * n}
+    # two halves of a 200 m strip: the left half sparse (2 per square), the right dense (10);
+    # three squares landed on the left by chance, one on the right
+    plots = [sq(10, 2), sq(40, 2), sq(80, 2), sq(110, 10)]     # nearest-square boundary at x = 100
+    cells = np.array([[x + 1.0, 5.0] for x in range(0, 200, 2)])
+    plain = design_estimate(plots, 2000)
+    fair = design_estimate(plots, 2000, cells=cells)
+    assert plain["count"] == 80                       # 4 per 100 m2 x 2000 m2: the left half counts three times
+    assert fair["count"] == 120                       # (2 + 10) / 2 per 100 m2 x 2000 m2
+    same = design_estimate([sq(45, 4), sq(145, 6)], 2000, cells=cells)        # evenly spread: weights change nothing
+    assert same["count"] == design_estimate([sq(45, 4), sq(145, 6)], 2000)["count"]
+
+
+def test_sharp_map_projects_ground_points_into_the_frame():
+    import cv2
+    from naqsha import sharp
+    s = sharp.Shot()
+    s.K, s.dist, s.W, s.H = sharp._camera({"width": 3840, "height": 2160, "focal_x": 0.7, "c_x": 0.0, "c_y": 0.0})
+    s.rvec = np.array([math.pi, 0.0, 0.0])                # looking straight down
+    s.R, _ = cv2.Rodrigues(s.rvec)
+    s.origin = np.array([1000.0, 2000.0, 0.0])
+    C = np.array([0.0, 0.0, 135.0])                       # 35 m above ground at 100 m
+    s.t = -s.R @ C
+    P, depth = sharp._project(s, np.array([[1000.0, 2000.0, 100.0], [1010.0, 2000.0, 100.0]]))
+    assert np.allclose(depth, 35.0)
+    assert abs(P[0, 0] - 1919.5) < 1e-3 and abs(P[0, 1] - 1079.5) < 1e-3     # nadir point at the image centre
+    assert abs((P[1, 0] - P[0, 0]) - 0.7 * 3840 * 10 / 35) < 1e-3              # 10 m east -> f * 10 / 35 px to the right

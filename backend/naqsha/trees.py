@@ -33,6 +33,7 @@ from . import canopy
 
 DETECT_RES = 0.10          # m per pixel; DeepForest's training scale
 SITE_RES = 0.05            # taught models: saplings ~1 m across become ~20 px, inside the detector's smallest anchor
+SHARP_RES = 0.025          # taught on the sharp map (sharp.py): plants 0.4 m across are still ~16 px
 MEASURABLE_H = 1.0         # below this a detected crown's height is reported as not measurable:
                            # under closed canopy the ground is hidden and the height model reads ~0
 PATCH = 400                # px per model window
@@ -307,17 +308,32 @@ def score_plots(trees: list[dict], plots: list[dict], radius: float | None = Non
     return {"tp": tp, "fp": fp, "fn": fn, "precision": prec, "recall": rec, "f1": f1, "per_plot": per}
 
 
-def design_estimate(plots: list[dict], area_m2: float | None) -> dict | None:
+def design_estimate(plots: list[dict], area_m2: float | None, cells: np.ndarray | None = None) -> dict | None:
     """Trees on the whole map from randomly placed squares alone, no model involved:
-    mean density in the squares x mapped area, with a Student-t 95% interval."""
+    mean density in the squares x mapped area, with a Student-t 95% interval.
+
+    With `cells` (centres of the mapped ground on a grid), each square is weighted by
+    the share of the map closer to it than to any other square. Random squares can
+    bunch up in one part of a map by chance (or be added there later); unweighted, that
+    part would count for more than its area."""
     if not area_m2 or len(plots) < 2:
         return None
     from scipy import stats
     dens = np.array([len(p["marks_m"]) / (p["size_m"] ** 2) for p in plots])
-    m, se = dens.mean(), dens.std(ddof=1) / math.sqrt(len(dens))
-    tq = stats.t.ppf(0.975, len(dens) - 1)
+    n = len(dens)
+    w = np.full(n, 1 / n)
+    if cells is not None and len(cells):
+        from scipy.spatial import cKDTree
+        ctr = np.array([np.mean(np.array(p["poly_m"]), 0) for p in plots])
+        _, near = cKDTree(ctr).query(cells)
+        w = np.bincount(near, minlength=n) / len(cells)
+    m = float((w * dens).sum())
+    # variance of a weighted mean of independent squares; equals s^2/n when weights are equal
+    s2 = float((w * (dens - m) ** 2).sum()) / max(1e-9, 1 - float((w ** 2).sum()))
+    se = math.sqrt(float((w ** 2).sum()) * s2)
+    tq = stats.t.ppf(0.975, n - 1)
     return {"count": round(m * area_m2), "low": max(0, round((m - tq * se) * area_m2)), "high": round((m + tq * se) * area_m2),
-            "squares": len(plots), "per_ha": round(m * 1e4, 1)}
+            "squares": n, "per_ha": round(m * 1e4, 1), "weighted": cells is not None}
 
 
 def estimate(n_detected: int, sc: dict) -> dict:

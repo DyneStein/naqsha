@@ -279,11 +279,11 @@ def run(rid: int):
     rdir = pipeline.run_dir_for(r)
     layers = {}
     for name, rel in (("orthophoto", "odm_orthophoto/odm_orthophoto.tif"), ("dsm", "odm_dem/dsm.tif"),
-                      ("dtm", "odm_dem/dtm.tif")):
+                      ("dtm", "odm_dem/dtm.tif"), ("sharp", "trees/sharp.tif")):
         p = rdir / rel
         if p.exists():
             layers[name] = {"bounds": tiles.bounds_wgs84(p)}
-            if name != "orthophoto":
+            if name not in ("orthophoto", "sharp"):
                 layers[name]["legend"] = tiles.legend(p)
     r["layers"] = layers
     return r
@@ -326,7 +326,7 @@ def download(rid: int, kind: str):
 @app.get("/api/runs/{rid}/tiles/{layer}/{z}/{x}/{y}.png")
 def run_tile(rid: int, layer: str, z: int, x: int, y: int):
     rel = {"orthophoto": "odm_orthophoto/odm_orthophoto.tif", "dsm": "odm_dem/dsm.tif",
-           "dtm": "odm_dem/dtm.tif"}.get(layer)
+           "dtm": "odm_dem/dtm.tif", "sharp": "trees/sharp.tif"}.get(layer)
     if rel is None:
         _404("layer")
     p = pipeline.run_dir_for(_run(rid)) / rel
@@ -389,7 +389,18 @@ class ModelIn(BaseModel):
 
 
 def _tree_busy(rid: int) -> bool:
-    return bool(db.one("SELECT id FROM jobs WHERE ref_id=? AND kind IN ('trees','trees_train') AND status IN ('queued','running')", (rid,)))
+    return bool(db.one("SELECT id FROM jobs WHERE ref_id=? AND kind IN ('trees','trees_train','sharp') AND status IN ('queued','running')", (rid,)))
+
+
+@app.post("/api/runs/{rid}/trees/sharp")
+def trees_sharp(rid: int):
+    """Rebuild the map image from the raw frames, for counting small plants."""
+    r = _run(rid)
+    if r["status"] != "done":
+        raise HTTPException(409, "the map is not finished yet")
+    if _tree_busy(rid):
+        raise HTTPException(409, "trees are already being counted on this map")
+    return {"job": jobs.submit("sharp", r["project_id"], rid, {})}
 
 
 @app.get("/api/runs/{rid}/trees")
@@ -493,19 +504,22 @@ def trees_plot_delete(rid: int, plot_id: int):
 
 TREE_FILES = {"trees": ("trees.geojson", "application/geo+json"), "crowns": ("crowns.geojson", "application/geo+json"),
               "density": ("density.geojson", "application/geo+json"), "csv": ("trees.csv", "text/csv"),
-              "kml": ("trees.kml", "application/vnd.google-earth.kml+xml"), "chm": ("chm.tif", "image/tiff"),
+              "kml": ("trees.kml", "application/vnd.google-earth.kml+xml"), "chm": ("chm.tif", "image/tiff"), "sharp": ("sharp.tif", "image/tiff"),
               "log": ("experiment.jsonl", "application/x-ndjson")}
 
 
 class TreeSettingsIn(BaseModel):
-    min_height_m: float = 0.0
+    min_height_m: float | None = None
+    imagery: str | None = None        # "map" (stitched orthophoto) or "sharp" (rebuilt from the raw frames)
 
 
 @app.post("/api/runs/{rid}/trees/settings")
 def trees_settings(rid: int, body: TreeSettingsIn):
     _run(rid)
-    if not 0 <= body.min_height_m <= 40:
+    if body.min_height_m is not None and not 0 <= body.min_height_m <= 40:
         raise HTTPException(422, "height must be 0 to 40 m")
+    if body.imagery not in (None, "map", "sharp"):
+        raise HTTPException(422, "imagery must be map or sharp")
     treework.save_settings(rid, body.model_dump())
     return treework.status(rid)
 

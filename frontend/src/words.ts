@@ -47,6 +47,7 @@ export const JOB_TITLE: Record<string, string> = {
   pull_odm: 'Downloading the stitching engine',
   trees: 'Counting trees',
   trees_train: 'Teaching Naqsha your trees',
+  sharp: 'Rebuilding the map from the raw frames',
 }
 
 export function cameraUse(pitch?: number | null): { label: string; detail: string; kind: string } {

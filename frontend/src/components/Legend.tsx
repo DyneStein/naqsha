@@ -78,6 +78,11 @@ export function Legend({ layers, setLayers, run, videos, hiddenClips, setHiddenC
               <input type="range" aria-label="Map opacity" min={0} max={1} step={0.05} value={layers.orthoOpacity} onChange={(e) => set({ orthoOpacity: +e.target.value })} className="w-full" />
             )}
           </Row>
+          {run?.layers?.sharp && (
+            <Row swatch={patch('linear-gradient(135deg,#1f5a1f,#b4e08a)', '#94a3b8')} title="Sharp map"
+              desc="The same ground rebuilt straight from the raw drone frames, without the stitching smears. Small plants show up here. Tall crowns keep the stitched map's pixels."
+              checked={layers.sharp} onChange={(v) => set({ sharp: v })} />
+          )}
           <Row swatch={patch('linear-gradient(90deg,#333399,#00b3b3,#e6e680,#cc9933,#fff)', '#94a3b8')} title="Elevation"
             desc="Height of the surface, including trees and buildings. Blue is low, white is high." checked={layers.dsm} onChange={(v) => set({ dsm: v })} disabled={!run?.layers?.dsm}>
             {layers.dsm && legend && (

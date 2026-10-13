@@ -18,6 +18,7 @@ export interface LayerState {
   dsm: boolean
   holes: boolean
   orthoOpacity: number
+  sharp: boolean
   trees: boolean
   crowns: boolean
   density: boolean
@@ -46,7 +47,7 @@ export function squareAround(lng: number, lat: number, size: number): number[][]
 }
 
 export const DEFAULT_LAYERS: LayerState = {
-  basemap: 'osm', coverage: 'mappable', track: true, frames: true, ortho: true, dsm: false, holes: true, orthoOpacity: 1,
+  basemap: 'osm', coverage: 'mappable', track: true, frames: true, ortho: true, dsm: false, holes: true, orthoOpacity: 1, sharp: false,
   trees: true, crowns: false, density: false, plots: true,
 }
 
@@ -308,7 +309,7 @@ export function MapView({ track, coverage, homes, selection, run, layers, clipId
   useEffect(() => {
     const m = map.current
     if (!ready || !m) return
-    for (const id of ['ortho', 'dsm']) {
+    for (const id of ['ortho', 'sharp', 'dsm']) {
       if (m.getLayer(id)) m.removeLayer(id)
       if (m.getSource(id)) m.removeSource(id)
     }
@@ -319,6 +320,12 @@ export function MapView({ track, coverage, homes, selection, run, layers, clipId
       m.addLayer({ id: 'ortho', type: 'raster', source: 'ortho', paint: { 'raster-opacity': layers.orthoOpacity, 'raster-resampling': 'linear' },
         layout: { visibility: layers.ortho ? 'visible' : 'none' } }, before)
     }
+    if (run?.layers?.sharp) {
+      const b = run.layers.sharp.bounds
+      m.addSource('sharp', { type: 'raster', tiles: [tileUrl(run.id, 'sharp')], tileSize: 256, maxzoom: 23, bounds: b as any })
+      m.addLayer({ id: 'sharp', type: 'raster', source: 'sharp', paint: { 'raster-opacity': layers.orthoOpacity, 'raster-resampling': 'linear' },
+        layout: { visibility: layers.sharp ? 'visible' : 'none' } }, before)
+    }
     if (run?.layers?.dsm) {
       const b = run.layers.dsm.bounds
       m.addSource('dsm', { type: 'raster', tiles: [tileUrl(run.id, 'dsm')], tileSize: 256, maxzoom: 22, bounds: b as any })
@@ -327,7 +334,7 @@ export function MapView({ track, coverage, homes, selection, run, layers, clipId
     }
     ;(m.getSource('holes') as GeoJSONSource).setData(run?.qa?.holes?.geojson ?? EMPTY)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, run?.id, run?.layers?.orthophoto?.bounds?.join(), run?.status])
+  }, [ready, run?.id, run?.layers?.orthophoto?.bounds?.join(), run?.layers?.sharp?.bounds?.join(), run?.status])
 
   useEffect(() => {
     const m = map.current
@@ -336,11 +343,15 @@ export function MapView({ track, coverage, homes, selection, run, layers, clipId
       m.setLayoutProperty('ortho', 'visibility', layers.ortho ? 'visible' : 'none')
       m.setPaintProperty('ortho', 'raster-opacity', layers.orthoOpacity)
     }
+    if (m.getLayer('sharp')) {
+      m.setLayoutProperty('sharp', 'visibility', layers.sharp ? 'visible' : 'none')
+      m.setPaintProperty('sharp', 'raster-opacity', layers.orthoOpacity)
+    }
     if (m.getLayer('dsm')) m.setLayoutProperty('dsm', 'visibility', layers.dsm ? 'visible' : 'none')
     const hv = layers.holes ? 'visible' : 'none'
     m.setLayoutProperty('holes-fill', 'visibility', hv)
     m.setLayoutProperty('holes-line', 'visibility', hv)
-  }, [ready, layers.ortho, layers.dsm, layers.orthoOpacity, layers.holes, run?.id])
+  }, [ready, layers.ortho, layers.sharp, layers.dsm, layers.orthoOpacity, layers.holes, run?.id, run?.layers?.sharp?.bounds?.join()])
 
   // fit to the flight once per project, as soon as its track is loaded
   const fitted = useRef('')

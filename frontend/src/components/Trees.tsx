@@ -144,6 +144,8 @@ export function TreesPanel({ run, status, busy, onChanged, onPlace, onEdit, onAn
         )}
       </Section>
 
+      {s && <ImagerySection run={run} status={status} busy={busy} onChanged={onChanged} setErr={setErr} />}
+
       {s && (
         <Section title="Test squares" hint={<>
           Naqsha drops these at random across sparse, medium and dense areas, and you mark <b>every</b> tree inside each.
@@ -391,5 +393,41 @@ export function MarkingBar({ mode, count, role, question, onDone, onCancel, onUn
       {onSkip && <Button size="sm" kind="ghost" onClick={onSkip}>Skip</Button>}
       <Button size="sm" kind="ghost" onClick={onCancel}>Cancel</Button>
     </div>
+  )
+}
+
+function ImagerySection({ run, status, busy, onChanged, setErr }: {
+  run: Run; status: TreeStatus | null; busy: boolean; onChanged: () => void; setErr: (e: string | null) => void
+}) {
+  const imagery = status?.settings?.imagery ?? 'map'
+  const sh = status?.sharp
+  const used = status?.summary?.imagery ?? 'map'
+  const model = status?.site_model
+  const choose = (v: 'map' | 'sharp') => api.saveTreeSettings(run.id, { imagery: v }).then(onChanged).catch((e) => setErr(e.message))
+  return (
+    <Section title="Image to count on" hint={<>
+      The stitched map drapes the frames over a surface model. Over leafy ground that surface is noisy, so the
+      texture smears and small plants vanish. The <b>sharp map</b> rebuilds the same ground straight from the raw
+      frames: each spot from the frame that saw it most straight-down, so low plants come out sharp. Tall crowns keep
+      the stitched map's pixels. Teach the model again on the image you choose, and mark new squares on it.</>}>
+      {!sh ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button disabled={busy} onClick={() => api.makeSharp(run.id).then(onChanged).catch((e) => setErr(e.message))}>Make the sharp map</Button>
+          <span className="text-xs text-slate-500">About half an hour for 8 ha on a laptop.</span>
+        </div>
+      ) : (
+        <div className="space-y-2 text-xs">
+          <div className="flex rounded-lg bg-slate-950/70 p-0.5" role="group" aria-label="Image to count on">
+            {([['map', 'Stitched map'], ['sharp', 'Sharp map']] as const).map(([v, label]) => (
+              <button key={v} onClick={() => choose(v)} aria-pressed={imagery === v} disabled={busy}
+                className={`flex-1 rounded-md px-2 py-1 transition-colors ${imagery === v ? 'bg-sky-600 text-on-accent' : 'text-slate-300 hover:text-white'}`}>{label}</button>
+            ))}
+          </div>
+          <p className="text-slate-400">Sharp map from {n(sh.frames)} frames{sh.from_frames_m2 ? `, ${(sh.from_frames_m2 / 1e4).toFixed(1)} ha of it straight from the frames` : ''}.</p>
+          {imagery !== used && <p className="text-saffron-300">The count shown was made on the {used === 'sharp' ? 'sharp' : 'stitched'} map. Teach and count again to use the {imagery === 'sharp' ? 'sharp' : 'stitched'} map.</p>}
+          {imagery === used && model && (model.imagery ?? 'map') !== imagery && <p className="text-saffron-300">Model {model.version} was taught on the {model.imagery === 'sharp' ? 'sharp' : 'stitched'} map. Teach it again for its best on this image.</p>}
+        </div>
+      )}
+    </Section>
   )
 }
