@@ -7,6 +7,7 @@ of the project, in <project>/tree_model/.
 from __future__ import annotations
 
 import json
+import shutil
 import time
 from pathlib import Path
 
@@ -551,9 +552,13 @@ def train_job(ctx: JobContext) -> None:
     base = base_model(run["project_id"])
     image, imagery = _imagery(run, rdir, tdir)
     res = trees.SHARP_RES if imagery == "sharp" else trees.SITE_RES
-    info = trees.fine_tune(image, cand, plots, vdir, init_dir=base["dir"] if base else None,
-                           res=float(base.get("res", res)) if base else res,
-                           progress=lambda f, m=None: ctx.progress(0.6 * f, "Teaching the model your trees", m))
+    try:
+        info = trees.fine_tune(image, cand, plots, vdir, init_dir=base["dir"] if base else None,
+                               res=float(base.get("res", res)) if base else res,
+                               progress=lambda f, m=None: ctx.progress(0.6 * f, "Teaching the model your trees", m))
+    except BaseException:
+        shutil.rmtree(vdir, ignore_errors=True)     # a failed teach leaves no half-made version behind
+        raise
     kinds = sorted({"active learning" if p.get("origin") == "active" else "teaching squares" for p in plots})
     label = " + ".join(kinds) if use == "all" else {"random": "random squares", "active": "active learning"}[use]
     if base:

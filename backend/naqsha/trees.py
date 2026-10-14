@@ -543,22 +543,35 @@ def fine_tune(ortho: Path, cand: dict, plots: list[dict], model_dir: Path, epoch
         raise ValueError("no marked trees to learn from")
     pd.DataFrame(rows).to_csv(work / "labels.csv", index=False)
     progress(0.1, f"{len(rows)} marked crowns in {len(plots)} squares")
-    m = main.deepforest(config_args={
-        "train": {"csv_file": str(work / "labels.csv"), "root_dir": str(work), "epochs": epochs, "lr": 0.0002,
-                  "augmentations": [{"HorizontalFlip": {"p": 0.5}}, {"VerticalFlip": {"p": 0.5}}, {"RandomBrightnessContrast": {"p": 0.3}}, {"HueSaturationValue": {"p": 0.3}}]},
-        "log_root": str(work / "logs"), "workers": 0, "batch_size": 2})
-    m.load_model()
-    if init_dir is not None and (init_dir / "model.pt").exists():
-        import torch
-        m.model.load_state_dict(torch.load(init_dir / "model.pt", map_location="cpu"))
     import pytorch_lightning as pl
 
     class Report(pl.Callback):
         def on_train_epoch_end(self, trainer, module):
             progress(0.1 + 0.85 * (trainer.current_epoch + 1) / epochs, f"learning, round {trainer.current_epoch + 1} of {epochs}")
-    m.create_trainer(callbacks=[Report()], enable_checkpointing=False, enable_progress_bar=False)
-    m.model.train()        # load_model leaves it in inference mode
-    m.trainer.fit(m)
+
+    def attempt(accelerator: str):
+        m = main.deepforest(config_args={
+            "train": {"csv_file": str(work / "labels.csv"), "root_dir": str(work), "epochs": epochs, "lr": 0.0002,
+                      "augmentations": [{"HorizontalFlip": {"p": 0.5}}, {"VerticalFlip": {"p": 0.5}}, {"RandomBrightnessContrast": {"p": 0.3}}, {"HueSaturationValue": {"p": 0.3}}]},
+            "log_root": str(work / "logs"), "workers": 0, "batch_size": 2, "accelerator": accelerator, "devices": "auto" if accelerator == "auto" else 1})
+        m.load_model()
+        if init_dir is not None and (init_dir / "model.pt").exists():
+            m.model.load_state_dict(torch.load(init_dir / "model.pt", map_location="cpu"))
+        m.create_trainer(callbacks=[Report()], enable_checkpointing=False, enable_progress_bar=False)
+        m.model.train()        # load_model leaves it in inference mode
+        m.trainer.fit(m)
+        return m
+
+    try:
+        m = attempt("auto")
+    except RuntimeError as e:
+        # The Mac graphics chip (MPS) sometimes fails inside torchvision's box matching
+        # ("IntArrayRef contains an int that cannot be represented as a SymInt"), most often
+        # on squares with many marks. The processor is slower but does not have that fault.
+        if not torch.backends.mps.is_available():
+            raise
+        progress(0.1, f"graphics chip failed ({str(e).splitlines()[0][:80]}), teaching again on the processor")
+        m = attempt("cpu")
     m.model.eval()
     torch.save(m.model.state_dict(), model_dir / "model.pt")
     info = {"crowns": sum(1 for r in rows if r["xmax"]), "squares": [p["id"] for p in plots], "epochs": epochs, "res": res, "trained_at": time.time()}
